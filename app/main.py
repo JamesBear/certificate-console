@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from .auth import router as auth_router
 from .certs.router import router as cert_router
 from .db import Databases
-from .errors import install_error_handlers
+from .errors import install_error_handlers, not_found
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA = ROOT / "data"
@@ -37,7 +37,10 @@ def create_app(data_dir: str | Path | None = None) -> FastAPI:
 
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str) -> FileResponse:
-            candidate = FRONTEND_DIST / path
+            root = FRONTEND_DIST.resolve()
+            candidate = (root / path).resolve()
+            if not candidate.is_relative_to(root):
+                raise not_found("Page")
             if path and candidate.is_file():
                 return FileResponse(candidate)
             return FileResponse(FRONTEND_DIST / "index.html")

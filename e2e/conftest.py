@@ -41,11 +41,14 @@ def base_url(tmp_path_factory) -> str:
 
     port = _free_port()
     env = {**os.environ, "CERT_CONSOLE_DATA": str(data), "PYTHONPATH": str(ROOT)}
+    # A PIPE with no reader can fill (especially on Windows) and block uvicorn's
+    # access logger and the requests themselves. Keep diagnostics in a real file.
+    server_log = (data / "server.log").open("w", encoding="utf-8")
     process = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", str(port)],
         cwd=ROOT,
         env=env,
-        stdout=subprocess.PIPE,
+        stdout=server_log,
         stderr=subprocess.STDOUT,
     )
 
@@ -60,12 +63,17 @@ def base_url(tmp_path_factory) -> str:
             time.sleep(0.25)
     else:  # pragma: no cover
         process.kill()
-        raise RuntimeError("uvicorn did not become healthy")
-
-    yield url
-
-    process.terminate()
-    try:
         process.wait(timeout=5)
-    except subprocess.TimeoutExpired:  # pragma: no cover
-        process.kill()
+        server_log.close()
+        raise RuntimeError(f"uvicorn did not become healthy; see {data / 'server.log'}")
+
+    try:
+        yield url
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:  # pragma: no cover
+            process.kill()
+            process.wait(timeout=5)
+        server_log.close()

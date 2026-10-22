@@ -40,6 +40,7 @@ export function CertificatesPage() {
   const { me } = useSession();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [resolvedQuery, setResolvedQuery] = useState<string | null>(null);
   const [data, setData] = useState<ListResponse | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +66,7 @@ export function CertificatesPage() {
   }
 
   const queryKey = params.toString();
+  const queryPending = loading || resolvedQuery !== queryKey;
   useEffect(() => {
     // One fetch path. The query is read from the URL inside the effect (never from the render
     // closure, which can be a navigation stale), and only the newest response may write state.
@@ -75,7 +77,10 @@ export function CertificatesPage() {
     void api
       .certificates({ ...query, pageSize: PAGE_SIZE })
       .then((result) => {
-        if (mine === requestSeq.current) setData(result);
+        if (mine === requestSeq.current) {
+          setData(result);
+          setResolvedQuery(queryKey);
+        }
       })
       .catch((e: unknown) => {
         if (mine === requestSeq.current) {
@@ -85,6 +90,7 @@ export function CertificatesPage() {
       .finally(() => {
         if (mine === requestSeq.current) setLoading(false);
       });
+    return () => { ++requestSeq.current; };
   }, [queryKey, reloadKey]);
 
   useEffect(() => {
@@ -112,12 +118,12 @@ export function CertificatesPage() {
           <p className="eyebrow">YOUR CREDENTIAL REGISTRY</p>
           <h1>Certificates<span className="heading-dot">.</span></h1>
           <p className="sub" data-testid="summary">
-            {data && !loading ? `${data.total} certificates` : 'Loading…'} · {me?.tenant.timezone} · Manage issued credentials and their history.
+            {data && !queryPending ? `${data.total} certificates` : 'Loading…'} · {me?.tenant.timezone} · Manage issued credentials and their history.
           </p>
         </div>
         <div className="actions">
         {me?.role === 'admin' && <Link className="btn btn-primary" to="/issue">+ Issue certificates</Link>}
-        <button className="btn" onClick={onExport} disabled={loading} data-testid="export-button">
+        <button className="btn" onClick={onExport} disabled={queryPending || !!error} data-testid="export-button">
           ↓ Export CSV
         </button>
         </div>
@@ -126,7 +132,7 @@ export function CertificatesPage() {
       {notice && <div className="notice">{notice}</div>}
 
       <section className="registry-panel" aria-label="Certificate registry">
-      <div className="panel-heading"><div><span className="section-marker"/>All certificates <span className="count-pill">{data && !loading ? data.total : '…'}</span></div><span className="panel-caption">Your workspace’s official record</span></div>
+      <div className="panel-heading"><div><span className="section-marker"/>All certificates <span className="count-pill">{data && !queryPending ? data.total : '…'}</span></div><span className="panel-caption">Your workspace’s official record</span></div>
       <div className="toolbar" role="search" aria-label="Filter certificates">
         <input
           className="input"
@@ -167,7 +173,7 @@ export function CertificatesPage() {
 
       {error ? (
         <ErrorState message={error} onRetry={() => setReloadKey((key) => key + 1)} />
-      ) : !data ? (
+      ) : !data || queryPending ? (
         <SkeletonRows />
       ) : rows.length === 0 ? (
         hasFilters ? (

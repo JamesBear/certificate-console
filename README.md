@@ -17,10 +17,19 @@ Prerequisites: **Python 3.11+** and **Node 20+** (with `pnpm` or `npm`).
 python run.py
 ```
 
-First run creates `.venv`, installs both dependency sets, then starts:
+First run creates `.venv`, installs both dependency sets, and seeds a new demo workspace.
+Setup output is visible; each setup stage has a 180-second limit (`--setup-timeout` changes it).
+When dependencies are already installed in your active environment, use
+`python run.py --no-bootstrap`. This skips installation, not application startup.
+
+The command starts:
 
 - API on <http://127.0.0.1:8000> (uvicorn, auto-reload)
 - Web app on <http://127.0.0.1:5173> (Vite, proxying `/api`)
+
+The terminal stays open while the servers run. Look for `[run] READY` and open the printed URL.
+`Ctrl+C` stops both process trees. Ports already in use fail with a clear error rather than moving Vite
+to a different port. `--port` and `--web-port` select alternate API/web ports and keep the proxy aligned.
 
 `Ctrl+C` stops both. `python run.py --prod` builds the SPA and serves everything from FastAPI on one
 port. The seed runs on first start; to reset:

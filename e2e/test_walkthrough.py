@@ -1,4 +1,4 @@
-﻿"""The demo: a labelled walkthrough of every workflow, with assertions.
+"""The demo: a labelled walkthrough of every workflow, with assertions.
 
 Each step paints a banner naming what is about to happen, performs the action, and then asserts the
 observable outcome. The banner is injected by the test, so the production bundle carries no demo
@@ -21,6 +21,8 @@ from playwright.sync_api import Page, expect, sync_playwright
 
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 HEADED = os.environ.get("E2E_HEADED") == "1"
+SLOW_MO_MS = int(os.environ.get("E2E_SLOW_MO_MS", "1200")) if HEADED else 0
+STEP_PAUSE_MS = int(os.environ.get("E2E_STEP_PAUSE_MS", "2000")) if HEADED else 0
 
 steps: list[tuple[int, str, str]] = []
 _step_index = 0
@@ -39,7 +41,7 @@ BANNER_JS = """
     ].join(';');
     document.body.appendChild(el);
   }
-  el.textContent = '閳?' + label;
+  el.textContent = 'STEP | ' + label;
 }
 """
 
@@ -51,6 +53,8 @@ def step(page: Page, label: str, assertion: str = "") -> None:
     page.evaluate(BANNER_JS, label)
     steps.append((_step_index, label, assertion))
     print(f"\n[e2e {_step_index:02d}] {label}", flush=True)
+    if STEP_PAUSE_MS:
+        page.wait_for_timeout(STEP_PAUSE_MS)
 
 
 def shot(page: Page, label: str) -> None:
@@ -90,7 +94,7 @@ def test_demo_walkthrough(base_url: str) -> None:
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=not HEADED, slow_mo=450 if HEADED else 0)
+        browser = playwright.chromium.launch(headless=not HEADED, slow_mo=SLOW_MO_MS)
         context = browser.new_context(
             viewport={"width": 1280, "height": 860},
             record_video_dir=str(ARTIFACTS / "video") if HEADED else None,
@@ -104,7 +108,7 @@ def test_demo_walkthrough(base_url: str) -> None:
             else None,
         )
 
-        # 1 閳?login gate
+        # 1 -login gate
         step(page, "Open the console while signed out", "redirected to /login")
         page.goto(base_url + "/")
         expect(page.get_by_test_id("sign-in")).to_be_visible()
@@ -114,7 +118,7 @@ def test_demo_walkthrough(base_url: str) -> None:
         sign_in(page, "t_acme", "u_t_acme")
         expect(page.get_by_test_id("summary")).to_contain_text("Australia/Sydney")
 
-        # 2 閳?list
+        # 2 -list
         step(page, "Certificates load", "twenty rows on the first page")
         expect(page.get_by_test_id("cert-row")).to_have_count(20)
         first_row = page.get_by_test_id("cert-row").first
@@ -124,9 +128,11 @@ def test_demo_walkthrough(base_url: str) -> None:
         shot(page, "list")
 
 
-        step(page, f"Search by learner name: {learner.split()[-1]}", "every row matches the term")
-        term = learner.split()[-1].lower()
-        page.get_by_test_id("search-input").fill(learner.split()[-1])
+        # Use a stable seeded name so a display string cannot contaminate the search input.
+        term = "novak"
+        step(page, "Search by learner name: Novak", "every row matches the term")
+        page.get_by_test_id("search-input").fill("Novak")
+        expect(page.get_by_test_id("search-input")).to_have_value("Novak")
 
         def all_rows_match() -> bool:
             names = page.get_by_test_id("cert-row").locator(".cell-name").all_inner_texts()
@@ -142,7 +148,9 @@ def test_demo_walkthrough(base_url: str) -> None:
         shot(page, "search-name")
 
         step(page, f"Search by serial fragment: {serial[-5:]}", "the serial is found")
+        assert serial.isascii(), f"Unexpected characters in serial: {serial!r}"
         page.get_by_test_id("search-input").fill(serial[-5:])
+        expect(page.get_by_test_id("search-input")).to_have_value(serial[-5:])
         expect(page.get_by_test_id("serial").first).to_contain_text(serial[-5:])
         shot(page, "search-serial")
 
@@ -159,7 +167,7 @@ def test_demo_walkthrough(base_url: str) -> None:
         expect(page.get_by_test_id("serial").first).not_to_have_text(before)
         shot(page, "page-two")
 
-        # 4 閳?detail + DST
+        # 4 -detail + DST
         step(page, "Open a certificate", "the tenant zone label is shown")
         page.get_by_test_id("status-filter").select_option("valid")
         expect(page.get_by_test_id("cert-row").first).to_be_visible()
@@ -169,16 +177,16 @@ def test_demo_walkthrough(base_url: str) -> None:
         assert ("AEDT" in zone_label or "AEST" in zone_label) and "UTC+1" in zone_label, zone_label
         shot(page, "detail")
 
-        # 5 閳?revoke
+        # 5 -revoke
         step(page, "Revoke it with a reason", "status becomes Revoked and the audit grows")
         page.get_by_test_id("revoke-button").click()
-        page.get_by_test_id("revoke-reason").fill("Duplicate enrolment 閳?issued twice by mistake.")
+        page.get_by_test_id("revoke-reason").fill("Duplicate enrolment -issued twice by mistake.")
         page.get_by_test_id("confirm-revoke").click()
         expect(page.get_by_test_id("detail-status")).to_contain_text("Revoked")
         expect(page.get_by_test_id("audit-entry")).to_have_count(2)
         shot(page, "revoked")
 
-        # 6 閳?bulk issue
+        # 6 -bulk issue
         step(page, "Open bulk issue", "courses and eligibility are visible")
         page.get_by_role("link", name="Bulk issue").click()
         expect(page.get_by_test_id("eligibility")).to_be_visible()
@@ -195,14 +203,14 @@ def test_demo_walkthrough(base_url: str) -> None:
         expect(page.get_by_test_id("issue-button")).to_be_disabled()
         shot(page, "issued")
 
-        # 7 閳?replay
+        # 7 -replay
         step(page, "Replay the same request", "the replay banner appears and nothing new is issued")
         page.get_by_test_id("replay-button").click()
         expect(page.get_by_test_id("replay-banner")).to_be_visible()
         expect(page.get_by_test_id("issued-count")).to_have_text(f"Issued {issued}")
         shot(page, "replay")
 
-        # 8 閳?export
+        # 8 -export
         step(page, "Export the current filter as CSV", "the file matches the list")
         page.get_by_role("link", name="Certificates", exact=True).click()
         page.get_by_test_id("status-filter").select_option("revoked")
@@ -223,7 +231,7 @@ def test_demo_walkthrough(base_url: str) -> None:
         assert len(rows) - 1 == total, (len(rows), total)
         shot(page, "export")
 
-        # 9 閳?isolation
+        # 9 -isolation
         step(page, "Sign out and sign in as Northwind (Perth)", "a different tenant's data, no crossover")
         page.get_by_test_id("sign-out").click()
         sign_in(page, "t_northwind", "u_t_northwind")
