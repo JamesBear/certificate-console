@@ -1,0 +1,25 @@
+[project]
+name        = "certificate-console"
+base_branch = "master"
+server      = "http://127.0.0.1:8787"
+
+[roles]
+lead-2 = "manager"
+dev-1  = "developer"
+dev-2  = "developer"
+rev-1  = "reviewer"
+rev-2  = "reviewer"
+
+[[verify]]
+name     = "check"
+run      = ["sh", "check.sh"]
+where    = "client"
+timeout  = 300
+blocking = true
+
+[forbid_paths]
+paths = []
+
+[handoff]
+required_sections = ["Current state", "Hard facts", "Pitfalls", "Next step"]
+require_evidence  = true
