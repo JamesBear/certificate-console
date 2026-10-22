@@ -50,7 +50,9 @@ class Databases:
         self.tenants_dir.mkdir(parents=True, exist_ok=True)
 
     def _connect(self, path: Path) -> sqlite3.Connection:
-        return _configure(sqlite3.connect(path))
+        # FastAPI may run a synchronous dependency, endpoint and cleanup on different
+        # worker threads. Connections remain request-scoped; never shared between requests.
+        return _configure(sqlite3.connect(path, check_same_thread=False))
 
     def control(self) -> sqlite3.Connection:
         conn = self._connect(self.control_path)
