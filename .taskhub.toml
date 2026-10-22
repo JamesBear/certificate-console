@@ -5,6 +5,7 @@ server      = "http://127.0.0.1:8787"
 
 [roles]
 lead-2 = "manager"
+lead-3 = "manager"
 dev-1  = "developer"
 dev-2  = "developer"
 rev-1  = "reviewer"
