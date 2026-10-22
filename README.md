@@ -184,3 +184,7 @@ run.py           single entrypoint
   bigger transaction.
 - Revocation is terminal; there is no reinstate or re-issue (a retake cannot be certified separately).
 - CSV export streams, but the list endpoint uses offset pagination, which degrades on very deep pages.
+## Development conversations
+
+- [Codex chat history](chat-history-codex.md)
+- [DeepSeek harness chat history](chat-history-deepseek-harness.md)
