@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, download } from '../api';
 import { useSession } from '../session';
 import { formatDateTime } from '../time';
@@ -15,6 +15,27 @@ import type { CertRow, Course, ListResponse } from '../types';
 
 const PAGE_SIZE = 20;
 
+type Query = {
+  search: string;
+  status: 'all' | 'valid' | 'revoked';
+  courseId: string;
+  sort: 'learner' | 'course' | 'serial' | 'issuedDate' | 'status';
+  dir: 'asc' | 'desc';
+  page: number;
+};
+
+/** The URL is the only source of truth for the list query. */
+function readQuery(source: URLSearchParams): Query {
+  return {
+    search: source.get('search') ?? '',
+    status: (source.get('status') ?? 'all') as Query['status'],
+    courseId: source.get('courseId') ?? '',
+    sort: (source.get('sort') ?? 'issuedDate') as Query['sort'],
+    dir: (source.get('dir') ?? 'desc') as Query['dir'],
+    page: Number(source.get('page') ?? '1'),
+  };
+}
+
 export function CertificatesPage() {
   const { me } = useSession();
   const navigate = useNavigate();
@@ -25,6 +46,7 @@ export function CertificatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
+  const requestSeq = useRef(0);
 
   const search = params.get('search') ?? '';
   const status = (params.get('status') ?? 'all') as 'all' | 'valid' | 'revoked';
@@ -44,24 +66,25 @@ export function CertificatesPage() {
 
   const queryKey = params.toString();
   useEffect(() => {
-    let cancelled = false;
+    // One fetch path. The query is read from the URL inside the effect (never from the render
+    // closure, which can be a navigation stale), and only the newest response may write state.
+    const mine = ++requestSeq.current;
+    const query = readQuery(new URLSearchParams(queryKey));
     setLoading(true);
     setError(null);
     void api
-      .certificates({ search, status, courseId, sort, dir, page, pageSize: PAGE_SIZE })
+      .certificates({ ...query, pageSize: PAGE_SIZE })
       .then((result) => {
-        if (!cancelled) setData(result);
+        if (mine === requestSeq.current) setData(result);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load certificates.');
+        if (mine === requestSeq.current) {
+          setError(e instanceof Error ? e.message : 'Could not load certificates.');
+        }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (mine === requestSeq.current) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryKey, reloadKey]);
 
   useEffect(() => {
@@ -83,22 +106,28 @@ export function CertificatesPage() {
   const rows = data?.rows ?? [];
 
   return (
-    <div className="page">
+    <div className="page registry-page">
       <div className="page-head">
         <div>
-          <h1>Certificates</h1>
+          <p className="eyebrow">YOUR CREDENTIAL REGISTRY</p>
+          <h1>Certificates<span className="heading-dot">.</span></h1>
           <p className="sub" data-testid="summary">
-            {data ? `${data.total} certificates` : 'Loading…'} · dates in {me?.tenant.timezone} ({me?.zoneAbbr})
+            {data && !loading ? `${data.total} certificates` : 'Loading…'} · {me?.tenant.timezone} · Manage issued credentials and their history.
           </p>
         </div>
+        <div className="actions">
+        {me?.role === 'admin' && <Link className="btn btn-primary" to="/issue">+ Issue certificates</Link>}
         <button className="btn" onClick={onExport} disabled={loading} data-testid="export-button">
-          Export CSV
+          ↓ Export CSV
         </button>
+        </div>
       </div>
 
       {notice && <div className="notice">{notice}</div>}
 
-      <div className="toolbar">
+      <section className="registry-panel" aria-label="Certificate registry">
+      <div className="panel-heading"><div><span className="section-marker"/>All certificates <span className="count-pill">{data && !loading ? data.total : '…'}</span></div><span className="panel-caption">Your workspace’s official record</span></div>
+      <div className="toolbar" role="search" aria-label="Filter certificates">
         <input
           className="input"
           placeholder="Search learner name or serial number…"
@@ -132,6 +161,7 @@ export function CertificatesPage() {
             </option>
           ))}
         </select>
+        {hasFilters && <button className="linkbtn" onClick={() => setParams(new URLSearchParams())}>Clear filters</button>}
         {loading && data && <span className="toolbar-hint">Refreshing…</span>}
       </div>
 
@@ -158,7 +188,7 @@ export function CertificatesPage() {
         )
       ) : (
         <>
-          <div className={`table-wrap${loading ? ' is-busy' : ''}`}>
+          <div className={`table-wrap${loading ? ' is-busy' : ''}`} aria-busy={loading}>
             <table className="table">
               <thead>
                 <tr>
@@ -193,10 +223,10 @@ export function CertificatesPage() {
                     onClick={() => navigate(`/certificates/${row.id}`)}
                   >
                     <td>
-                      <div className="cell-name">{row.learnerName}</div>
-                      <div className="cell-sub">{row.learnerEmail ?? 'No email on file'}</div>
+                      <div className="learner-cell"><span className="learner-avatar" aria-hidden="true">{row.learnerName.split(' ').map(n=>n[0]).slice(0,2).join('')}</span><div><Link className="learner-link cell-name" to={`/certificates/${row.id}`} onClick={(event) => event.stopPropagation()}>{row.learnerName}</Link>
+                      <div className="cell-sub">{row.learnerEmail ?? 'No email on file'}</div></div></div>
                     </td>
-                    <td>{row.courseTitle}</td>
+                    <td><span className="course-title">{row.courseTitle}</span></td>
                     <td className="mono" data-testid="serial">
                       {row.serial}
                     </td>
@@ -216,6 +246,8 @@ export function CertificatesPage() {
           <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={(next) => update({ page: next })} />
         </>
       )}
+      </section>
+      <div className="registry-footnote"><span>◎</span> Revoked certificates remain in the registry to preserve their history.</div>
     </div>
   );
 }

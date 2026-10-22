@@ -15,6 +15,8 @@ export function DetailPage() {
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [notifying, setNotifying] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,19 +53,24 @@ export function DetailPage() {
   }
 
   async function onNotify() {
-    if (!id) return;
+    if (!id || notifying) return;
+    setNotifying(true);
+    setNotice(null);
     setActionError(null);
     try {
       await api.notify(id);
+      setNotice('Notification sent to the learner.');
       setReloadKey((key) => key + 1);
     } catch (e: unknown) {
       setActionError(e instanceof Error ? e.message : 'Could not resend the notification.');
+    } finally {
+      setNotifying(false);
     }
   }
 
   if (error) {
     return (
-      <div className="page">
+      <div className="page detail-page">
         <Link className="linkbtn" to="/certificates">
           ← Back to certificates
         </Link>
@@ -74,7 +81,7 @@ export function DetailPage() {
 
   if (!detail) {
     return (
-      <div className="page">
+      <div className="page detail-page">
         <Link className="linkbtn" to="/certificates">
           ← Back to certificates
         </Link>
@@ -87,38 +94,31 @@ export function DetailPage() {
   const tz = me!.tenant.timezone;
 
   return (
-    <div className="page">
+    <div className="page detail-page">
       <Link className="linkbtn" to="/certificates" data-testid="back-link">
         ← Back to certificates
       </Link>
 
       <div className="page-head">
         <div>
-          <h1 className="mono" data-testid="detail-serial">
-            {certificate.serial}
-          </h1>
-          <p className="sub">
-            {course.title} · {learner.name}
-          </p>
+          <p className="eyebrow">CREDENTIAL RECORD</p>
+          <h1>{learner.name}<span className="heading-dot">.</span></h1>
+          <p className="sub">{course.title}</p>
         </div>
         <div className="actions">
           <span data-testid="detail-status">
             <StatusBadge status={certificate.status} />
           </span>
-          {me!.role === 'admin' && certificate.status === 'valid' && (
-            <button className="btn btn-danger" onClick={() => setConfirming(true)} data-testid="revoke-button">
-              Revoke
-            </button>
-          )}
           {me!.role === 'admin' && (
-            <button className="btn" onClick={() => void onNotify()} data-testid="notify-button">
-              Resend notification
+            <button className="btn" disabled={notifying} onClick={() => void onNotify()} data-testid="notify-button">
+              {notifying ? 'Sending…' : 'Resend notification'}
             </button>
           )}
         </div>
       </div>
 
-      {actionError && <div className="notice notice-error">{actionError}</div>}
+      {notice && <div className="notice" role="status">{notice}</div>}
+      {actionError && <div className="notice notice-error" role="alert">{actionError}</div>}
 
       {confirming && (
         <div className="card card-warn">
@@ -160,7 +160,15 @@ export function DetailPage() {
         </div>
       )}
 
-      <div className="card">
+      <div className="detail-grid">
+      <section className="credential-sheet">
+        <div className="sheet-top"><span className="eyebrow">OFFICIAL CREDENTIAL</span><span className="seal" aria-hidden="true">✦</span></div>
+        <p className="sheet-caption">This credential is issued to</p>
+        <h2 className="recipient-name">{learner.name}</h2>
+        <p className="sheet-caption">for completing</p>
+        <div className="credential-course">{course.title}</div>
+        <p className="credential-serial" data-testid="detail-serial">{certificate.serial}</p>
+        <div className="sheet-rule"/>
         <dl className="kv">
           <div>
             <dt>Learner</dt>
@@ -223,10 +231,11 @@ export function DetailPage() {
             </>
           )}
         </dl>
-      </div>
-
-      <div className="card">
-        <h2>Audit trail</h2>
+      <div className="sheet-bottom"><span className="live-dot"/>Issued by {me!.tenant.name}<span>Credential registry</span></div>
+      </section>
+      <aside className="record-sidebar">
+      <div className="card timeline-card">
+        <p className="eyebrow">RECORD HISTORY</p><h2>Audit trail</h2><p className="hint">A permanent record of this credential.</p>
         <ol className="audit">
           {audit.map((entry) => (
             <li key={entry.id} className="audit-item" data-testid="audit-entry">
@@ -243,6 +252,14 @@ export function DetailPage() {
             </li>
           ))}
         </ol>
+      </div>
+      <div className="card lifecycle-card"><p className="eyebrow">LIFECYCLE</p><h2>{certificate.status === 'valid' ? 'Manage validity' : 'Certificate revoked'}</h2><p className="hint">{certificate.status === 'valid' ? 'Revocation is permanent. The certificate and its history will stay in this registry.' : 'This credential is no longer valid. Its serial number and full history are preserved.'}</p>          {me!.role === 'admin' && certificate.status === 'valid' && (
+            <button className="btn btn-danger" onClick={() => setConfirming(true)} data-testid="revoke-button">
+              Revoke
+            </button>
+          )}
+</div>
+      </aside>
       </div>
     </div>
   );

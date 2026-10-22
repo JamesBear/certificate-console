@@ -57,13 +57,13 @@ export function LoginPage() {
   }
 
   return (
-    <div className="login-wrap">
+    <div className="login-wrap"><section className="login-story"><div className="brand"><div className="brand-mark">c<span>•</span></div><div className="brand-name">Credential</div></div><div><p className="eyebrow">RECOGNISE THE ACHIEVEMENT.</p><h1>Good work deserves<br/>a lasting record.</h1><p>One workspace for the credentials you issue<br/>and the people who earn them.</p></div><span className="story-footer">ISSUE. VERIFY. ACCOUNT FOR EVERY CHANGE.</span></section>
       <form className="login-card" onSubmit={submit}>
         <div className="brand">
-          <div className="brand-mark">CC</div>
+          <div className="brand-mark">c<span>•</span></div>
           <div>
-            <div className="brand-name">Certificate Console</div>
-            <div className="brand-sub">Sign in to your tenant</div>
+            <div className="brand-name">Welcome to your workspace</div>
+            <div className="brand-sub">Choose your organisation and account to continue.</div>
           </div>
         </div>
 

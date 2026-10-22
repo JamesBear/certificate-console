@@ -75,15 +75,16 @@ export function IssuePage() {
   }
 
   return (
-    <div className="page">
+    <div className="page issue-page">
       <div className="page-head">
         <div>
-          <h1>Bulk issue</h1>
+          <p className="eyebrow">FROM COMPLETION TO CREDENTIAL</p><h1>Bulk issue<span className="heading-dot">.</span></h1>
           <p className="sub">Issue certificates to every eligible learner on a completed course.</p>
         </div>
       </div>
 
-      <div className="card">
+      <div className="issue-layout"><div className="card issue-form">
+        <div className="section-title"><span className="step-number">01</span><div><h2>Select a course</h2><p className="hint">We’ll check which completed learners are ready for a certificate.</p></div></div>
         <label className="field">
           <span className="label">Course</span>
           <select
@@ -110,10 +111,12 @@ export function IssuePage() {
           </p>
         ) : null}
 
+        {eligibility && !checking && <div className="eligibility-grid"><div><strong>{eligibility.enrolled}</strong><span>Enrolled learners</span></div><div className="eligible-metric"><strong>{eligibility.eligible}</strong><span>Ready to issue</span></div><div><strong>{eligibility.alreadyIssued}</strong><span>Already certified</span></div></div>}
+        <div className="section-title review-step"><span className="step-number">02</span><div><h2>Review & issue</h2><p className="hint">One certificate per learner. Existing credentials are kept.</p></div></div>
         <div className="actions">
           <button
             className="btn btn-primary"
-            disabled={running || !eligibility || eligibility.eligible === 0}
+            disabled={running || checking || !eligibility || eligibility.eligible === 0}
             onClick={() => void run(keyRef.current)}
             data-testid="issue-button"
           >
@@ -124,14 +127,14 @@ export function IssuePage() {
                 : 'No eligible learners'}
           </button>
           <span className="hint">
-            Idempotency key <code>{keyRef.current.slice(0, 8)}</code> — retrying returns the original result.
+            Safe to retry. A repeated request won’t issue duplicate certificates.
           </span>
         </div>
 
         {eligibility && eligibility.eligible === 0 && (
           <p className="hint">Every learner on this course already holds a certificate.</p>
         )}
-      </div>
+      </div><aside className="issue-guide"><span className="guide-icon">✦</span><p className="eyebrow">ISSUE WITH CONFIDENCE</p><h2>A clear path<br/>to certification.</h2><ol><li><strong>Completed learners only</strong><p>Only learners with a completed enrollment are eligible.</p></li><li><strong>No duplicates</strong><p>Each learner keeps one certificate per course, including revoked records.</p></li><li><strong>A permanent record</strong><p>Every issuance is recorded. Notifications follow after certificates are saved.</p></li></ol><div className="guide-footer">◎ {me?.tenant.name}</div></aside></div>
 
       {running && (
         <div className="card" data-testid="issue-progress">
@@ -151,7 +154,7 @@ export function IssuePage() {
               Replay detected — this is the original result. No new certificates were issued.
             </div>
           )}
-          <div className="chips">
+          <div className="section-title"><span className="step-number">03</span><div><h2>Issuance results</h2><p className="hint">Review the outcome for every learner.</p></div></div><div className="chips">
             <span className="chip" data-testid="issued-count">
               Issued {result.summary.issued}
             </span>
@@ -187,7 +190,7 @@ export function IssuePage() {
               Simulate network retry
             </button>
             <span className="hint">
-              {me?.tenant.code} · reuses the same idempotency key
+              Returns the same result without creating duplicates.
             </span>
           </div>
         </div>

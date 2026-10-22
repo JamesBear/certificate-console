@@ -100,6 +100,10 @@ def bulk_issue(
                 )
                 continue
 
+            # One savepoint per candidate: the certificate, its serial allocation and its audit
+            # row must land together or not at all. Without this, a failing audit insert leaves a
+            # committed certificate with no audit trail (review P1).
+            conn.execute("savepoint candidate")
             try:
                 serial = _next_serial(conn, tenant_code, issued_at, timezone)
                 certificate_id = f"crt_{serial.rsplit('-', 1)[1]}_{candidate['learner_id']}"
@@ -134,6 +138,7 @@ def bulk_issue(
                         f"for {course['title']} ({serial}).",
                     ),
                 )
+                conn.execute("release candidate")
                 issued_certificates.append((certificate_id, candidate["learner_email"]))
                 counts["issued"] += 1
                 rows.append(
@@ -145,19 +150,40 @@ def bulk_issue(
                         "serial": serial,
                     }
                 )
-            except sqlite3.IntegrityError:
-                # Lost a race with a concurrent batch: that learner is already certified.
-                counts["skipped"] += 1
-                rows.append(
-                    {
-                        "learnerId": candidate["learner_id"],
-                        "learnerName": candidate["learner_name"],
-                        "outcome": "skipped",
-                        "reason": "Certificate already issued.",
-                        "serial": None,
-                    }
-                )
+            except sqlite3.IntegrityError as exc:
+                conn.execute("rollback to candidate")
+                conn.execute("release candidate")
+                # A duplicate means someone else certified this learner; anything else is a real
+                # row failure and must be reported as `failed`, not hidden as a skip.
+                already = conn.execute(
+                    "select 1 from certificate where course_id = ? and learner_id = ?",
+                    (course_id, candidate["learner_id"]),
+                ).fetchone()
+                if already is not None:
+                    counts["skipped"] += 1
+                    rows.append(
+                        {
+                            "learnerId": candidate["learner_id"],
+                            "learnerName": candidate["learner_name"],
+                            "outcome": "skipped",
+                            "reason": "Certificate already issued.",
+                            "serial": None,
+                        }
+                    )
+                else:
+                    counts["failed"] += 1
+                    rows.append(
+                        {
+                            "learnerId": candidate["learner_id"],
+                            "learnerName": candidate["learner_name"],
+                            "outcome": "failed",
+                            "reason": str(exc),
+                            "serial": None,
+                        }
+                    )
             except sqlite3.Error as exc:  # pragma: no cover - defensive
+                conn.execute("rollback to candidate")
+                conn.execute("release candidate")
                 counts["failed"] += 1
                 rows.append(
                     {
