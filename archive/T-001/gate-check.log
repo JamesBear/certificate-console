@@ -3,26 +3,26 @@
 # 程序: sh
 # 在哪跑: client
 # 机器: james-pc
-# 墙钟: 22.203s
+# 墙钟: 21.922s
 # 退出码: 0
 # 阻断: True
 
 ## stdout
 compile: ok
-........................................................                 [100%]
+.........................................................                [100%]
 ============================== warnings summary ===============================
 ..\..\..\miniconda3\Lib\site-packages\starlette\testclient.py:45
   C:\Users\temp_\miniconda3\Lib\site-packages\starlette\testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
     _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-56 passed, 1 warning in 15.84s
+57 passed, 1 warning in 15.10s
 frontend typecheck: ok
 check: ok
 
 
 ## stderr
-[test watchdog] this run was bounded automatically: cap 180s (pid 67316) -- applied in place, no wrapper needed.  [targets a directory tree: tests]
+[test watchdog] this run was bounded automatically: cap 180s (pid 75256) -- applied in place, no wrapper needed.  [targets a directory tree: tests]
 [test watchdog]   inspect / change it:  sh ~/.workbuddy/bin/guard-status
 [test watchdog]   docs: C:\Users\temp_\.workbuddy\TEST-WATCHDOG.md
 [test watchdog]   longer: --force=SEC     no cap at all: --force
