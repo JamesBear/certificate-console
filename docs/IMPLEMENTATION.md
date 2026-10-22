@@ -1,38 +1,54 @@
 # Implementation plan
 
-Build order is expressed as task slices. Each slice is one branch, one pull request, one gate run.
-
 ---
 
 ## 1. Architecture
 
 ```
-browser ── /api/* ──▶ FastAPI (uvicorn :8000) ──▶ SQLite (WAL, single file)
+browser ── /api/* ──▶ FastAPI (uvicorn :8000)
+                        │
+                        ├─ data/control.db          tenants, users, memberships, sessions
+                        └─ data/tenants/<code>.db   one file per tenant: courses, learners,
+                                                    enrollments, certificates, audit, idempotency
         └─ SPA ─────▶ Vite dev :5173 (proxy /api → :8000)
 ```
 
 - One backend process. No worker, no queue, no scheduler.
-- Session cookie (`httponly`, `SameSite=Lax`) backed by a `session` table.
-- Instants stored and transported as UTC ISO-8601. Local calendar dates derived with `zoneinfo` and
-  stored where sorting/export needs them.
+- Session cookie (`httponly`, `SameSite=Lax`) backed by the `session` table in the control database.
+- Every request resolves `session → tenant → tenant database`, and every repository call receives that
+  tenant database handle. There is no "default" database to fall back to.
+- Instants stored and transported as UTC ISO-8601. Local calendar dates derived with `zoneinfo`.
+- Both databases run in WAL mode with `foreign_keys=ON` and `busy_timeout`.
 
 ---
 
 ## 2. Schema
 
+### Control database (`data/control.db`)
+
 | Table | Columns (beyond `id`) | Constraints |
 | --- | --- | --- |
-| `tenant` | name, code, timezone (IANA) | `code` unique |
+| `tenant` | name, code, timezone (IANA), db_file | `code` unique |
 | `app_user` | name, email | |
 | `membership` | user_id, tenant_id, role | PK(user_id, tenant_id); role in (admin, viewer) |
 | `session` | token_hash, user_id, tenant_id, created_at, expires_at | PK(token_hash) |
-| `course` | tenant_id, code, title | |
-| `learner` | tenant_id, name, email (nullable) | |
-| `enrollment` | tenant_id, course_id, learner_id, completed_at (nullable) | unique(course_id, learner_id) |
-| `certificate` | tenant_id, course_id, learner_id, serial, issued_at, issued_local_date, issued_by, status, notification_status, notification_sent_at, revoked_at, revoked_by, revoke_reason | **unique(tenant_id, course_id, learner_id)**, unique(serial), index(tenant_id, issued_local_date) |
-| `audit_entry` | tenant_id, certificate_id, action, actor_user_id, at, detail | index(certificate_id, at) |
-| `idempotency_record` | tenant_id, key, course_id, status_code, response_json, created_at | PK(tenant_id, key) |
-| `serial_counter` | tenant_id, year, next_value | PK(tenant_id, year) |
+
+### Tenant database (`data/tenants/<code>.db`)
+
+No `tenant_id` column exists in this database, by design (D11).
+
+| Table | Columns (beyond `id`) | Constraints |
+| --- | --- | --- |
+| `course` | code, title | |
+| `learner` | name, email (nullable) | |
+| `enrollment` | course_id, learner_id, completed_at (nullable) | unique(course_id, learner_id) |
+| `certificate` | course_id, learner_id, serial, issued_at, issued_local_date, issued_by, status, notification_status, notification_sent_at, revoked_at, revoked_by, revoke_reason | **unique(course_id, learner_id)**, unique(serial), index(issued_local_date) |
+| `audit_entry` | certificate_id, action, actor_user_id, at, detail | index(certificate_id, at) |
+| `idempotency_record` | key, course_id, status_code, response_json, created_at | PK(key) |
+| `serial_counter` | year, next_value | PK(year) |
+
+Cross-database references (`audit.actor_user_id` → control `app_user`) are soft: no foreign key is
+possible across files, so the actor's display name is also written into the audit `detail`.
 
 ---
 
@@ -63,21 +79,24 @@ browser ── /api/* ──▶ FastAPI (uvicorn :8000) ──▶ SQLite (WAL, s
 
 ## 4. Behaviour that must be right
 
-**Bulk issue** — one transaction: course lookup scoped to session tenant; replay of a known
-`(tenant, key)` returns the stored response with `replay: true`; per enrollment → `skipped` (has a
-certificate), `failed` (row-level error, batch continues), or `issued` (serial + certificate + audit +
-pending notification); the idempotency record is written in the same transaction.
+**Tenant routing** — a request without a resolvable tenant (no session, or a session whose tenant row is
+gone) is 401. The tenant database handle is opened per request from `tenant.db_file`; a path outside the
+tenants directory is refused.
 
-**Serials** — counter per (tenant, local year), block-allocated inside the transaction.
+**Bulk issue** — one transaction in the tenant database: course lookup; replay of a known key returns the
+stored response with `replay: true`; per enrollment → `skipped` (has a certificate), `failed` (row-level
+error, batch continues), or `issued` (serial + certificate + audit + pending notification); idempotency
+record written in the same transaction; cap 1,000.
 
-**Timezones** — `zoneinfo` with the tenant's IANA name. Never a stored offset, never
-`toISOString().slice(0,10)` for user-facing dates.
+**Serials** — counter per local year inside the tenant database, block-allocated in the transaction.
+
+**Timezones** — `zoneinfo` with the tenant's IANA zone from the control database. Never a stored offset.
 
 **Export** — `StreamingResponse`, server cursor, filter in SQL, ordered by `issued_local_date, issued_at`;
-count computed first for the row total; UTF-8 BOM.
+count first for the row total; UTF-8 BOM.
 
-**Audit** — one row per issuance and per revocation, actor + timestamp + human-readable detail, written
-in the same transaction as the state change.
+**Audit** — one row per issuance and per revocation, actor + timestamp + human-readable detail, in the
+same transaction as the state change. Append-only; no delete path exists.
 
 **Notification** — pending on issuance, dispatched after commit, `skipped` without an address, resendable.
 
@@ -94,7 +113,7 @@ explicit loading, empty (no data / no match) and error states.
 
 ## 6. Verification
 
-`check.sh` runs the gate: `python -m compileall` plus `pytest`. Eight API tests:
+`check.sh` runs `python -m compileall` and `pytest`. Eight API behaviours:
 
 1. cross-tenant read and write → 404
 2. same idempotency key twice → one set of certificates, replay flagged
@@ -105,19 +124,14 @@ explicit loading, empty (no data / no match) and error states.
 7. audit row per issuance and per revocation
 8. export respects the filter and matches the list row count
 
+Plus a test that two tenant databases are genuinely separate files, and that a certificate id from one
+tenant's database is 404 in the other.
+
 Plus the Playwright walkthrough (D10), which is the demo.
 
 ---
 
-## 7. Task slices
+## 7. Task
 
-| Slice | Task | Done when |
-| --- | --- | --- |
-| backend | T-001 skeleton: app factory, DB layer, schema, seed, session auth, `/health` | login as two tenants works; seed re-runs safely |
-| backend | T-002 list API + CSV export | filters, sort by local date, pagination; export matches count |
-| backend | T-003 detail + revoke + audit | revoke needs a reason, writes audit, 404 across tenants |
-| backend | T-004 bulk issue + serials + notification state | per-learner outcomes, replay, unique-index protection |
-| frontend | T-005 shell + login + list | session gate, URL state, three states |
-| frontend | T-006 detail + revoke + bulk issue screens | actions role-gated, progress, outcome table |
-| e2e | T-007 Playwright demo walkthrough | labelled steps, assertions, screenshots, video |
-| docs | T-008 run script + README + docker note | `python run.py` starts both from clean checkout |
+One task covers the whole build: backend, frontend, demo walkthrough, packaging. Its detail lives in
+Gitea (`task show`), and the acceptance criteria are the ones in §6 plus a working `python run.py`.
