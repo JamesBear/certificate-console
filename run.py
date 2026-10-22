@@ -142,6 +142,7 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--web-port", type=int, default=5173)
     parser.add_argument("--no-reload", action="store_true")
+    parser.add_argument("--seed", action="store_true", help="explicitly recreate demo data before starting")
     parser.add_argument("--no-bootstrap", action="store_true", help="use the active Python environment and already installed frontend dependencies")
     parser.add_argument("--setup-timeout", type=int, default=180)
     args = parser.parse_args()
@@ -155,6 +156,9 @@ def main() -> int:
         python = sys.executable if args.no_bootstrap else bootstrap(args.setup_timeout)
         if args.no_bootstrap:
             print("[run] using the active environment; skipping dependency installation", flush=True)
+        if args.seed:
+            data = os.environ.get("CERT_CONSOLE_DATA", str(ROOT / "data"))
+            stage("recreating demo data", [python, "-m", "app.seed", data], timeout=args.setup_timeout)
         ensure_seed(python, args.setup_timeout)
         if args.prod:
             stage("building web app", [package_manager(), "run", "build"], FRONTEND, args.setup_timeout)

@@ -1,0 +1,30 @@
+# Certificate console: one service, one port. The SPA is built in the image and served by FastAPI,
+# so there is a single origin (no CORS, cookies just work).
+#
+#   docker compose up --build      ->  http://127.0.0.1:8000
+#   docker compose down            # keeps ./data
+#   docker compose down -v         # with the named volume (if you switch to one)
+
+services:
+  console:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: certificate-console:local
+    ports:
+      - "8000:8000"
+    environment:
+      CERT_CONSOLE_DATA: /data
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).status == 200 else 1)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
