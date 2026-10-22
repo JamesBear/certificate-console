@@ -3,7 +3,7 @@
 # 程序: sh
 # 在哪跑: client
 # 机器: james-pc
-# 墙钟: 23.078s
+# 墙钟: 22.203s
 # 退出码: 0
 # 阻断: True
 
@@ -16,13 +16,13 @@ compile: ok
     _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-56 passed, 1 warning in 16.07s
+56 passed, 1 warning in 15.84s
 frontend typecheck: ok
 check: ok
 
 
 ## stderr
-[test watchdog] this run was bounded automatically: cap 180s (pid 63884) -- applied in place, no wrapper needed.  [targets a directory tree: tests]
+[test watchdog] this run was bounded automatically: cap 180s (pid 67316) -- applied in place, no wrapper needed.  [targets a directory tree: tests]
 [test watchdog]   inspect / change it:  sh ~/.workbuddy/bin/guard-status
 [test watchdog]   docs: C:\Users\temp_\.workbuddy\TEST-WATCHDOG.md
 [test watchdog]   longer: --force=SEC     no cap at all: --force
