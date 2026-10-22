@@ -11,51 +11,113 @@ forgotten `WHERE` clause cannot reach another tenant's data.
 
 ## Quick start
 
-Prerequisites: **Python 3.11+** (including `venv`/`pip`) and **Node 22 LTS with npm**.
+Choose either option from the repository directory.
+
+### Option 1: Python runner
+
+Requires **Python 3.11+** with `venv`/`pip` and **Node 22 LTS with npm**.
 
 ```bash
 python run.py
 ```
 
-First run creates `.venv`, installs both dependency sets, and seeds a new demo workspace.
-Setup output is visible; each setup stage has a 180-second limit (`--setup-timeout` changes it).
-When dependencies are already installed in your active environment, use
-`python run.py --no-bootstrap`. This skips installation, not application startup.
+First run creates `.venv`, installs backend/frontend dependencies and seeds an empty demo workspace.
+Wait for `[run] READY`, then open **http://127.0.0.1:5173**. The API runs on port 8000.
+Keep the terminal open; **Ctrl+C stops both servers**. Existing demo data is preserved on restart.
 
-The command starts:
-
-- API on <http://127.0.0.1:8000> (uvicorn, auto-reload)
-- Web app on <http://127.0.0.1:5173> (Vite, proxying `/api`)
-
-The terminal stays open while the servers run. Look for `[run] READY` and open the printed URL.
-`Ctrl+C` stops both process trees. Ports already in use fail with a clear error rather than moving Vite
-to a different port. `--port` and `--web-port` select alternate API/web ports and keep the proxy aligned.
-
-`Ctrl+C` stops both. `python run.py --prod` builds the SPA and serves everything from FastAPI on one
-port. The seed runs on first start; to reset:
+To build the frontend and serve everything on one port instead:
 
 ```bash
-python -m app.seed data
+python run.py --prod
 ```
 
-## Docker Compose
+Open **http://127.0.0.1:8000**. Use `--port` and `--web-port` for alternate ports. Setup stages have
+visible output and a 180-second timeout (`--setup-timeout` changes it). `--no-bootstrap` is available
+only when the active Python environment and frontend dependencies are already installed.
 
-Docker Engine with the Compose plugin is sufficient; host Python and Node are not needed.
+### Option 2: Docker Compose
+
+Requires **Docker Engine/Desktop with Docker Compose**. Host Python and Node are not needed.
 
 ```bash
 docker compose up --build -d --wait
+```
+
+Open **http://127.0.0.1:8000**. To inspect logs or stop the container:
+
+```bash
 docker compose logs -f
-# Stop services while retaining the data in ./data:
 docker compose down
 ```
 
-Open <http://127.0.0.1:8000>. The port is bound to loopback. Configure `CERT_CONSOLE_PORT`
-and `CERT_CONSOLE_DATA_DIR` in `.env` (see `.env.example`) to change the host port and persistent
-folder. Container recreation and repeated native starts preserve populated databases. Only explicit
-`python run.py --seed` resets demo records.
+Data is stored in `./data` and survives container recreation. Copy `.env.example` to `.env` to
+customize the host port or data folder. Both options bind to loopback by default. The two options
+share port 8000 by default, so stop one before starting the other or choose different ports.
 
-For the verified remote setup, prerequisites, mirror configuration, SSH forwarding, and test evidence,
-see [docs/STARTUP.md](docs/STARTUP.md).
+For verified Linux setup, optional package mirrors and SSH forwarding, see
+[Startup instructions](docs/STARTUP.md). To deliberately reset native demo records, run
+`python run.py --seed`; normal startup never resets populated databases.
+
+## Recorded walkthrough
+
+The supplied MP4 below is **1600 × 1000 H.264**, approximately **62 seconds**.
+
+<video controls playsinline preload="metadata" width="960" poster="docs/demo/demo-walkthrough-poster.png" src="docs/demo/demo-walkthrough.mp4"></video>
+
+[Watch or download the walkthrough MP4](docs/demo/demo-walkthrough.mp4)
+
+### Make a new recording
+
+Recording additionally requires **FFmpeg** on PATH and Playwright with Chromium in your active
+Python environment. Install the test dependencies once (prefer a virtualenv):
+
+```bash
+python -m pip install -r requirements.txt playwright
+python -m playwright install chromium
+```
+
+Then run this command from the repository root:
+
+```bash
+python scripts/record_walkthrough.py
+```
+
+It builds the SPA, runs the asserted walkthrough against fresh temporary databases at 1600 × 1000,
+records at the full viewport resolution, and encodes H.264 MP4 with CRF 18 and fast-start playback.
+It writes `docs/demo/demo-walkthrough.mp4`, its poster, and a step index. Original capture files remain
+under `e2e/artifacts/recording-*`. Existing demo databases are unaffected.
+
+To watch Chromium during recording or change the pacing:
+
+```bash
+python scripts/record_walkthrough.py --headed --slow-ms 1200 --step-ms 2000
+```
+
+## Screenshots
+
+### Certificate registry
+
+Search, filter and browse the tenant's certificate records.
+
+![Certificate registry with learner records and status filters](docs/screenshots/certificate-registry.png)
+
+### Certificate detail
+
+Review the credential, learner information and issuance history.
+
+![Certificate detail with credential preview and audit history](docs/screenshots/certificate-detail.png)
+
+### Revocation and audit trail
+
+Revoke a certificate with a reason while preserving its history.
+
+![Revoked certificate with the recorded reason and audit trail](docs/screenshots/revocation-audit.png)
+
+### Bulk issuance
+
+Review course eligibility and the results of issuing certificates in bulk.
+
+![Bulk issuance with eligibility totals and issuance results](docs/screenshots/bulk-issuance.png)
 
 ## Demo accounts
 
@@ -85,7 +147,7 @@ tenants.
 ## Tests
 
 ```bash
-python -m pytest tests        # 49 API checks (isolation, idempotency, DST, export parity)
+python -m pytest tests        # API, startup, isolation, export and regression checks
 E2E_HEADED=1 python -m pytest e2e -s   # labelled walkthrough with screenshots + video
 python -m pytest e2e          # headless, CI
 ```

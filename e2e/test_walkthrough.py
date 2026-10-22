@@ -19,10 +19,13 @@ from pathlib import Path
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
+ARTIFACTS = Path(os.environ.get("E2E_ARTIFACTS_DIR", str(Path(__file__).resolve().parent / "artifacts")))
 HEADED = os.environ.get("E2E_HEADED") == "1"
-SLOW_MO_MS = int(os.environ.get("E2E_SLOW_MO_MS", "1200")) if HEADED else 0
-STEP_PAUSE_MS = int(os.environ.get("E2E_STEP_PAUSE_MS", "2000")) if HEADED else 0
+RECORD = HEADED or os.environ.get("E2E_RECORD") == "1"
+WIDTH = int(os.environ.get("E2E_WIDTH", "1280"))
+HEIGHT = int(os.environ.get("E2E_HEIGHT", "860"))
+SLOW_MO_MS = int(os.environ.get("E2E_SLOW_MO_MS", "1200")) if RECORD else 0
+STEP_PAUSE_MS = int(os.environ.get("E2E_STEP_PAUSE_MS", "2000")) if RECORD else 0
 
 steps: list[tuple[int, str, str]] = []
 _step_index = 0
@@ -96,8 +99,9 @@ def test_demo_walkthrough(base_url: str) -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=not HEADED, slow_mo=SLOW_MO_MS)
         context = browser.new_context(
-            viewport={"width": 1280, "height": 860},
-            record_video_dir=str(ARTIFACTS / "video") if HEADED else None,
+            viewport={"width": WIDTH, "height": HEIGHT},
+            record_video_size={"width": WIDTH, "height": HEIGHT},
+            record_video_dir=str(ARTIFACTS / "video") if RECORD else None,
         )
         page = context.new_page()
         calls: list[str] = []
