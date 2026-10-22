@@ -186,5 +186,5 @@ run.py           single entrypoint
 - CSV export streams, but the list endpoint uses offset pagination, which degrades on very deep pages.
 ## Development conversations
 
-- [Codex chat history](chat-history-codex.md)
 - [DeepSeek harness chat history](chat-history-deepseek-harness.md)
+- [Codex chat history](chat-history-codex.md)
