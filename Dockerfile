@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+﻿# syntax=docker/dockerfile:1
 
 # --- build the SPA -------------------------------------------------------------------------------
 FROM node:22-alpine AS web
@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY docs ./docs
-COPY frontend/dist ./frontend/dist
+COPY --from=web /web/dist ./frontend/dist
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh && mkdir -p /data
 
@@ -31,3 +31,4 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).status == 200 else 1)"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
+
