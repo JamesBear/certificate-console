@@ -1,0 +1,17 @@
+.git
+.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/artifacts
+data
+.taskhub
+.env
+.env.*
+docs/demo
+docs/ui
+*.log
+**/*.db
+**/*.db-wal
+**/*.db-shm

@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..auth import Principal, current_principal, require_admin, tenant_db
+from ..auth import Principal, current_principal, require_admin, tenant_db, get_databases
+from ..db import Databases
 from ..errors import not_found
 from ..timezones import utc_now
 from . import repo, service
@@ -60,23 +61,30 @@ def export_csv(
     courseId: str | None = None,
     principal: Principal = Depends(current_principal),
     conn: sqlite3.Connection = Depends(tenant_db),
+    databases: Databases = Depends(get_databases),
 ) -> StreamingResponse:
     total = repo.count_export(conn, search=search, status=status, course_id=courseId)
     filename = f"certificates-{principal.tenant_code.lower()}-{utc_now().strftime('%Y-%m-%d')}.csv"
 
     def rows():
-        buffer = io.StringIO()
-        writer = csv.writer(buffer, quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
-        buffer.write("\ufeff")
-        writer.writerow(["Learner name", "Course title", "Serial number", "Issue date"])
-        yield buffer.getvalue()
-        buffer.seek(0)
-        buffer.truncate(0)
-        for row in repo.iter_export(conn, search=search, status=status, course_id=courseId):
-            writer.writerow([row["learner_name"], row["course_title"], row["serial"], row["issued_local_date"]])
+        # Older supported FastAPI releases close yield dependencies before streaming.
+        # Own this read connection for the generator's full lifetime, including disconnect.
+        stream_conn = databases.tenant(principal.tenant_code)
+        try:
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
+            buffer.write("\ufeff")
+            writer.writerow(["Learner name", "Course title", "Serial number", "Issue date"])
             yield buffer.getvalue()
             buffer.seek(0)
             buffer.truncate(0)
+            for row in repo.iter_export(stream_conn, search=search, status=status, course_id=courseId):
+                writer.writerow([row["learner_name"], row["course_title"], row["serial"], row["issued_local_date"]])
+                yield buffer.getvalue()
+                buffer.seek(0)
+                buffer.truncate(0)
+        finally:
+            stream_conn.close()
 
     return StreamingResponse(
         rows(),

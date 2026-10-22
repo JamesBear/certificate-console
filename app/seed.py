@@ -8,7 +8,6 @@ certificate is deliberately revoked; one course has nobody left to certify.
 from __future__ import annotations
 
 import random
-import shutil
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -256,7 +255,12 @@ def _course_code(spec: TenantSpec, course_id: str) -> str:
 def seed(base_dir: str | Path, *, reset: bool = True) -> list[dict]:
     base = Path(base_dir).resolve()
     if reset and base.exists():
-        shutil.rmtree(base)
+        # The data directory can be a Docker bind mount: never remove the mount
+        # itself or unrelated files. Reset only the known demo database files.
+        databases = [base / "control.db", *(base / "tenants" / f"{t.code.lower()}.db" for t in TENANTS)]
+        for path in databases:
+            for suffix in ("", "-wal", "-shm"):
+                Path(str(path) + suffix).unlink(missing_ok=True)
     db = Databases(base)
 
     control = db.control()

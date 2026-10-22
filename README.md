@@ -11,7 +11,7 @@ forgotten `WHERE` clause cannot reach another tenant's data.
 
 ## Quick start
 
-Prerequisites: **Python 3.11+** and **Node 20+** (with `pnpm` or `npm`).
+Prerequisites: **Python 3.11+** (including `venv`/`pip`) and **Node 22 LTS with npm**.
 
 ```bash
 python run.py
@@ -37,6 +37,25 @@ port. The seed runs on first start; to reset:
 ```bash
 python -m app.seed data
 ```
+
+## Docker Compose
+
+Docker Engine with the Compose plugin is sufficient; host Python and Node are not needed.
+
+```bash
+docker compose up --build -d --wait
+docker compose logs -f
+# Stop services while retaining the data in ./data:
+docker compose down
+```
+
+Open <http://127.0.0.1:8000>. The port is bound to loopback. Configure `CERT_CONSOLE_PORT`
+and `CERT_CONSOLE_DATA_DIR` in `.env` (see `.env.example`) to change the host port and persistent
+folder. Container recreation and repeated native starts preserve populated databases. Only explicit
+`python run.py --seed` resets demo records.
+
+For the verified remote setup, prerequisites, mirror configuration, SSH forwarding, and test evidence,
+see [docs/STARTUP.md](docs/STARTUP.md).
 
 ## Demo accounts
 
@@ -103,4 +122,3 @@ run.py           single entrypoint
   bigger transaction.
 - Revocation is terminal; there is no reinstate or re-issue (a retake cannot be certified separately).
 - CSV export streams, but the list endpoint uses offset pagination, which degrades on very deep pages.
-- Docker is not shipped yet; `python run.py` is the supported path.

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import signal
 import socket
-import sqlite3
 import subprocess
 import sys
 import threading
@@ -77,9 +77,9 @@ def stage(label: str, args: list[str], cwd: Path = ROOT, timeout: int = 180) -> 
 
 def package_manager() -> str:
     # Windows CreateProcess cannot resolve bare `npm` to npm.cmd. Resolve it first.
-    executable = shutil.which("pnpm") or shutil.which("npm")
+    executable = shutil.which("npm")
     if executable is None:
-        raise RuntimeError("Node 20+ with npm or pnpm is required")
+        raise RuntimeError("Node 22 LTS with npm is required")
     return executable
 
 
@@ -92,21 +92,18 @@ def bootstrap(timeout: int) -> str:
               "--disable-pip-version-check", "--timeout", "15", "--retries", "1",
               "-r", str(REQUIREMENTS)], timeout=timeout)
         STAMP.write_text("ok", encoding="utf-8")
-    if not (FRONTEND / "node_modules" / "vite" / "bin" / "vite.js").exists():
-        stage("installing frontend dependencies", [package_manager(), "install"], FRONTEND, timeout)
+    lock = FRONTEND / "package-lock.json"
+    signature = hashlib.sha256(lock.read_bytes() + (FRONTEND / "package.json").read_bytes() + sys.platform.encode()).hexdigest()
+    stamp = FRONTEND / "node_modules" / ".console-installed"
+    if not stamp.exists() or stamp.read_text().strip() != signature:
+        stage("installing frontend dependencies", [package_manager(), "ci", "--no-audit", "--no-fund"], FRONTEND, timeout)
+        stamp.write_text(signature, encoding="utf-8")
     return python
 
 
 def ensure_seed(python: str, timeout: int) -> None:
-    data = Path(os.environ.get("CERT_CONSOLE_DATA", str(ROOT / "data")))
-    control = data / "control.db"
-    populated = False
-    if control.exists():
-        with sqlite3.connect(control) as conn:
-            has_table = conn.execute("select 1 from sqlite_master where type='table' and name='tenant'").fetchone()
-            populated = bool(has_table and conn.execute("select 1 from tenant limit 1").fetchone())
-    if not populated:
-        stage("seeding a new demo workspace", [python, "-m", "app.seed", str(data)], timeout=timeout)
+    data = os.environ.get("CERT_CONSOLE_DATA", str(ROOT / "data"))
+    stage("checking demo workspace", [python, "-m", "app.bootstrap", data], timeout=timeout)
 
 
 def ensure_port_free(port: int) -> None:
@@ -149,6 +146,9 @@ def main() -> int:
     if not 1 <= args.port <= 65535 or not 1 <= args.web_port <= 65535 or args.setup_timeout < 1:
         parser.error("ports must be 1..65535 and setup timeout must be positive")
     children: list[subprocess.Popen] = []
+    previous_handlers = {}
+    for sig in (signal.SIGTERM, getattr(signal, 'SIGBREAK', signal.SIGINT)):
+        previous_handlers[sig] = signal.signal(sig, signal.default_int_handler)
     try:
         ensure_port_free(args.port)
         if not args.prod:
@@ -194,6 +194,8 @@ def main() -> int:
     finally:
         for child in reversed(children):
             stop_tree(child)
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
 
 
 if __name__ == "__main__":

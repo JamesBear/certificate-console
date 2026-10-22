@@ -48,3 +48,22 @@ def test_export_is_scoped_to_the_tenant(northwind: TestClient) -> None:
     rows = _parse(northwind.get("/api/certificates/export.csv"))
     for row in rows[1:]:
         assert row[2].startswith("CERT-NWL-")
+
+
+def test_export_stream_survives_request_dependency_cleanup(app):
+    import asyncio
+    import csv
+    import io
+    from types import SimpleNamespace
+    from app.certs.router import export_csv
+    databases = app.state.databases
+    conn = databases.tenant("ACM")
+    expected = conn.execute("select count(*) from certificate").fetchone()[0]
+    response = export_csv(search="", status="all", courseId=None,
+                          principal=SimpleNamespace(tenant_code="ACM"),
+                          conn=conn, databases=databases)
+    conn.close()  # Simulate FastAPI 0.115 cleaning up request dependencies.
+    async def consume():
+        return "".join([chunk async for chunk in response.body_iterator])
+    rows = list(csv.reader(io.StringIO(asyncio.run(consume()).lstrip("\ufeff"))))
+    assert len(rows) - 1 == expected

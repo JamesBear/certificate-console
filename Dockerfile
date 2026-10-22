@@ -3,8 +3,8 @@
 # --- build the SPA -------------------------------------------------------------------------------
 FROM node:22-alpine AS web
 WORKDIR /web
-COPY frontend/package.json ./
-RUN npm install --no-audit --no-fund
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
@@ -16,13 +16,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_TRUSTED_HOST=
+RUN pip install --no-cache-dir --timeout 15 --retries 1 -r requirements.txt
 
 COPY app ./app
-COPY docs ./docs
 COPY --from=web /web/dist ./frontend/dist
 COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh && mkdir -p /data
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh && mkdir -p /data
 
 EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \

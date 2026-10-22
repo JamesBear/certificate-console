@@ -3,20 +3,22 @@
 #
 #   docker compose up --build      ->  http://127.0.0.1:8000
 #   docker compose down            # keeps ./data
-#   docker compose down -v         # with the named volume (if you switch to one)
 
 services:
   console:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
     image: certificate-console:local
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${CERT_CONSOLE_PORT:-8000}:8000"
     environment:
       CERT_CONSOLE_DATA: /data
     volumes:
-      - ./data:/data
+      - ${CERT_CONSOLE_DATA_DIR:-./data}:/data
     restart: unless-stopped
     healthcheck:
       test:
